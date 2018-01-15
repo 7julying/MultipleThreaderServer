@@ -1,0 +1,22 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio 2013
+VisualStudioVersion = 12.0.21005.1
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "MultipleThreaderServer", "MultipleThreaderServer\MultipleThreaderServer.vcxproj", "{EA763008-2C85-4277-951A-151E8CB45C5C}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Win32 = Debug|Win32
+		Release|Win32 = Release|Win32
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{EA763008-2C85-4277-951A-151E8CB45C5C}.Debug|Win32.ActiveCfg = Debug|Win32
+		{EA763008-2C85-4277-951A-151E8CB45C5C}.Debug|Win32.Build.0 = Debug|Win32
+		{EA763008-2C85-4277-951A-151E8CB45C5C}.Release|Win32.ActiveCfg = Release|Win32
+		{EA763008-2C85-4277-951A-151E8CB45C5C}.Release|Win32.Build.0 = Release|Win32
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal
