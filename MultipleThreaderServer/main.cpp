@@ -1,6 +1,9 @@
 #include <winsock2.h>
 #include <stdio.h>
 #include <windows.h>
+#include <string>
+#include <iostream>
+#include <conio.h>
 // Need to link with Ws2_32.lib
 #pragma comment (lib, "Ws2_32.lib")
 int signal = 0;//signal为客户端编号
@@ -13,7 +16,15 @@ DWORD WINAPI ThreadProc(
 	)
 {
 	int number;
+	unsigned long ul = 1;
+	int nRet;
 	SOCKET AcceptSocket = (SOCKET)lpParameter;
+	//设置套接字非阻塞模式
+	nRet = ioctlsocket(AcceptSocket, FIONBIO, (unsigned long*)&ul);
+	if (nRet == SOCKET_ERROR)
+	{
+		//设置套接字非阻塞模式，失败处理
+	}
 	//接收缓冲区的大小是50个字符
 	signal = signal + 1;
 	number = signal;//将客户端编号循环加一，并依次赋给number
@@ -22,14 +33,78 @@ DWORD WINAPI ThreadProc(
 	{
 		while (1)
 		{
+			int c;
+			if (_kbhit())//检测键盘有无按键，有按键_kbhit()返回一个非零值
+			{
+				//按键1代表前进，按键2代表停止
+				std::cin >> c;
+				if (c != 0)
+				{
+					if (c == 1)
+					{
+						recvBuf[0] = 0xff;
+						recvBuf[1] = 0x00;
+						recvBuf[2] = 0x01;
+						recvBuf[3] = 0x00;
+						recvBuf[4] = 0xff;
+						send(AcceptSocket, recvBuf, 5, 0);
+					}
+					else if (c == 2)
+					{
+						recvBuf[0] = 0xff;
+						recvBuf[1] = 0x00;
+						recvBuf[2] = 0x00;
+						recvBuf[3] = 0x00;
+						recvBuf[4] = 0xff;
+						send(AcceptSocket, recvBuf, 5, 0);
+					}
+					c == 0;//清空按键状态信息，避免误判断
+				}
+			}
 			char buf[51] = { 0 };
 			memset(buf, 0, 51);//每循环一次就清空接收数据
 			count = recv(AcceptSocket, buf, 50, 0);
+			if (SOCKET_ERROR == count)
+			{
+				int err = WSAGetLastError();
+				if (WSAEWOULDBLOCK == err)
+				{
+					continue;
+				}
+				else if (WSAETIMEDOUT == err || WSAENETDOWN == err)
+				{
+					break;
+				}
+			}
+			else if (0 == count)
+			{
+				break;
+			}
 			memset(sendflag, 1, 6);//初始化sendflag数组，每一位分别代表一个客户端的发送状态，没有发送为1
 			strcpy(recvBuf, buf);
-			if (count == 0)break;//被对方关闭
-			if (count == SOCKET_ERROR)break;//错误count<0
-			printf("接收来自客户端%d的信息：%s\n", AcceptSocket, recvBuf);
+			//将小车状态输出到屏幕
+			std::string output;
+			if (buf[2] == 0x00)
+			{
+				output = "stop";
+			}
+			else if (buf[2] == 0x01)
+			{
+				output = "forward";
+			}
+			else if (buf[2] == 0x02)
+			{
+				output = "back";
+			}
+			else if (buf[2] == 0x03)
+			{
+				output = "left";
+			}
+			else if (buf[2] == 0x04)
+			{
+				output = "right";
+			}
+			std::cout << "接收来自客户端" << AcceptSocket << "的信息:" << output << std::endl;
 		}
 	}
 //将1号客户端的反馈信息发送给其他客户端
@@ -123,4 +198,3 @@ int main(int argc, char* argv[])
 	WSACleanup();
 	return 0;
 }
-
