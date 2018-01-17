@@ -81,7 +81,7 @@ DWORD WINAPI ThreadProc(
 				break;
 			}
 			memset(sendflag, 1, 6);//初始化sendflag数组，每一位分别代表一个客户端的发送状态，没有发送为1
-			strcpy(recvBuf, buf);
+			memcpy(recvBuf, buf,sizeof buf);
 			//将小车状态输出到屏幕
 			std::string output;
 			if (buf[2] == 0x00)
@@ -117,7 +117,6 @@ DWORD WINAPI ThreadProc(
 				send(AcceptSocket, recvBuf, count, 0);
 				sendflag[number] = 0;//发送数据后将数组中的第number位置0，代表已发送
 			}
-			Sleep(10);
 		}
 	}
 
@@ -150,7 +149,7 @@ int main(int argc, char* argv[])
 	sockaddr_in addrServer;
 	addrServer.sin_family = AF_INET;
 	addrServer.sin_addr.s_addr = htonl(INADDR_ANY); //实际上是0
-	addrServer.sin_port = htons(20131);
+	addrServer.sin_port = htons(8081);
 
 
 	//绑定套接字到一个IP地址和一个端口上
@@ -158,7 +157,6 @@ int main(int argc, char* argv[])
 		wprintf(L"bind failed with error: %ld\n", WSAGetLastError());
 		closesocket(ListenSocket);
 		WSACleanup();
-
 
 		return 1;
 	}
