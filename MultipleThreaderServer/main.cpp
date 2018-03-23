@@ -1,198 +1,308 @@
+ï»¿#include <iostream>
 #include <winsock2.h>
+#include <winbase.h>
+#include <vector>
+#include <map>
+#include <string>
+#include <process.h>
 #include <stdio.h>
 #include <windows.h>
-#include <string>
-#include <iostream>
 #include <conio.h>
+#include <time.h>
 // Need to link with Ws2_32.lib
-#pragma comment (lib, "Ws2_32.lib")
-int signal = 0;//signalÎª¿Í»§¶Ë±àºÅ
-int count = 0;//countÎª¶Áµ½µÄÊı¾İ³¤¶È
-char recvBuf[51] = { 0 };//½ÓÊÕµÄÊı¾İ
-char sendflag[5];//·¢ËÍ±êÖ¾Î»
+using namespace std;
+#pragma comment(lib, "ws2_32.lib")			//åŠ¨æ€åº“å‡½æ•°
 
-DWORD WINAPI ThreadProc(
-	__in  LPVOID lpParameter
-	)
+/**
+* å…¨å±€å˜é‡
+*/
+/**
+*å‡½æ•°ç”³æ˜
+*/
+BOOL initSever(void);                       //åˆå§‹åŒ–
+void initMember(void);
+bool initSocket(void);						//åˆå§‹åŒ–éé˜»å¡å¥—æ¥å­—
+void exitServer(void);						//é‡Šæ”¾èµ„æº
+bool startService(void);					//å¯åŠ¨æœåŠ¡å™¨
+void showServerStartMsg(BOOL bSuc);         //æ˜¾ç¤ºé”™è¯¯ä¿¡æ¯
+void showServerExitMsg(void);               //æ˜¾ç¤ºé€€å‡ºæ¶ˆæ¯
+BOOL createAcceptThread(void);      //å¼€å¯ç›‘æ§å‡½æ•°
+DWORD __stdcall acceptThread(void* pParam); //å¼€å¯å®¢æˆ·ç«¯è¯·æ±‚çº¿ç¨‹
+/*** å…¨å±€å˜é‡
+*/
+char	dataBuf[2];				//å†™ç¼“å†²åŒº
+BOOL	bConning;							//ä¸å®¢æˆ·ç«¯çš„è¿æ¥çŠ¶æ€
+BOOL    bSend;                              //å‘é€æ ‡è®°ä½
+BOOL    clientConn;                         //è¿æ¥å®¢æˆ·ç«¯æ ‡è®°
+SOCKET	listenSocket;							//æœåŠ¡å™¨ç›‘å¬å¥—æ¥å­—
+HANDLE	hAcceptThread;						//æ•°æ®å¤„ç†çº¿ç¨‹å¥æŸ„
+HANDLE	hCleanThread;						//æ•°æ®æ¥æ”¶çº¿ç¨‹
+
+											/**
+											* åˆå§‹åŒ–
+											*/
+BOOL initSever(void)
 {
-	int number;
+	//åˆå§‹åŒ–å…¨å±€å˜é‡
+	initMember();
+
+	//åˆå§‹åŒ–SOCKET
+	if (!initSocket())
+		return FALSE;
+
+	return TRUE;
+}
+
+/**
+* åˆå§‹åŒ–å…¨å±€å˜é‡
+*/
+void initMember(void)
+{
+	memset(dataBuf, 0, 2);
+	bSend = FALSE;
+	clientConn = FALSE;
+	bConning = FALSE;									    //æœåŠ¡å™¨ä¸ºæ²¡æœ‰è¿è¡ŒçŠ¶æ€
+	hAcceptThread = NULL;									//è®¾ç½®ä¸ºNULL
+	hCleanThread = NULL;
+	listenSocket = INVALID_SOCKET;								//è®¾ç½®ä¸ºæ— æ•ˆçš„å¥—æ¥å­—
+}
+
+/**
+*  åˆå§‹åŒ–SOCKET
+*/
+bool initSocket(void)
+{
+	//è¿”å›å€¼
+	int reVal;
+
+	//åˆå§‹åŒ–Windows Sockets DLL
+	WSADATA  wsData;
+	reVal = WSAStartup(MAKEWORD(2, 2), &wsData);
+
+	//åˆ›å»ºå¥—æ¥å­—
+	listenSocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+	if (INVALID_SOCKET == listenSocket)
+	{
+		wprintf(L"socket failed with error: %ld\n", WSAGetLastError());
+		//WSACleanup();
+		return 1;
+	}
+
+	//è®¾ç½®å¥—æ¥å­—éé˜»å¡æ¨¡å¼
+	
+	/*unsigned long ul = 1;
+	reVal = ioctlsocket(listenSocket, FIONBIO, (unsigned long*)&ul);
+	if (SOCKET_ERROR == reVal)
+		return FALSE;*/
+
+	//ç»‘å®šå¥—æ¥å­—
+	sockaddr_in serAddr;
+	serAddr.sin_family = AF_INET;
+	serAddr.sin_port = htons(8081);
+	serAddr.sin_addr.S_un.S_addr = INADDR_ANY;
+	reVal = bind(listenSocket, (struct sockaddr*)&serAddr, sizeof(serAddr));
+	if (SOCKET_ERROR == reVal)
+		return FALSE;
+
+	//ç›‘å¬
+	reVal = listen(listenSocket, 5);
+	if (SOCKET_ERROR == reVal)
+		return FALSE;
+
+	return TRUE;
+}
+
+/**
+*  å¯åŠ¨æœåŠ¡
+*/
+bool startService(void)
+{
+	BOOL reVal = TRUE;	//è¿”å›å€¼
+			if (createAcceptThread())	//æ¥å—å®¢æˆ·ç«¯è¯·æ±‚çš„çº¿ç¨‹
+			{
+				showServerStartMsg(TRUE);		//åˆ›å»ºçº¿ç¨‹æˆåŠŸä¿¡æ¯
+			}
+			else {
+				reVal = FALSE;
+			}
+	return reVal;
+}
+
+/**
+* æ¥å—å®¢æˆ·ç«¯è¿æ¥çº¿ç¨‹
+*/
+BOOL createAcceptThread(void)
+{
+	bConning = TRUE;//è®¾ç½®æœåŠ¡å™¨ä¸ºè¿è¡ŒçŠ¶æ€
+
+					//åˆ›å»ºé‡Šæ”¾èµ„æºçº¿ç¨‹
+	unsigned long ulThreadId;
+	//åˆ›å»ºæ¥æ”¶å®¢æˆ·ç«¯è¯·æ±‚çº¿ç¨‹
+	hAcceptThread = CreateThread(NULL, 0, acceptThread, NULL, 0, &ulThreadId);
+	if (NULL == hAcceptThread)
+	{
+		bConning = FALSE;
+		return FALSE;
+	}
+	else
+	{
+		CloseHandle(hAcceptThread);
+	}
+	return TRUE;
+}
+
+DWORD WINAPI carMasterThreadProc(
+	__in  LPVOID lpParameter
+)
+{
 	unsigned long ul = 1;
 	int nRet;
 	SOCKET AcceptSocket = (SOCKET)lpParameter;
-	//ÉèÖÃÌ×½Ó×Ö·Ç×èÈûÄ£Ê½
+	//è®¾ç½®å¥—æ¥å­—éé˜»å¡æ¨¡å¼
 	nRet = ioctlsocket(AcceptSocket, FIONBIO, (unsigned long*)&ul);
+	printf("master car\n");
 	if (nRet == SOCKET_ERROR)
 	{
-		//ÉèÖÃÌ×½Ó×Ö·Ç×èÈûÄ£Ê½£¬Ê§°Ü´¦Àí
+		//è®¾ç½®å¥—æ¥å­—éé˜»å¡æ¨¡å¼ï¼Œå¤±è´¥å¤„ç†
 	}
-	//½ÓÊÕ»º³åÇøµÄ´óĞ¡ÊÇ50¸ö×Ö·û
-	signal = signal + 1;
-	number = signal;//½«¿Í»§¶Ë±àºÅÑ­»·¼ÓÒ»£¬²¢ÒÀ´Î¸³¸ønumber
-//Éè1ºÅ¿Í»§¶ËÎªÍ·³µ£¬½ÓÊÕ1ºÅ¿Í»§¶ËµÄ·´À¡ĞÅÏ¢
-	if (number == 1)
-	{
-		while (1)
-		{
-			int c;
-			if (_kbhit())//¼ì²â¼üÅÌÓĞÎŞ°´¼ü£¬ÓĞ°´¼ü_kbhit()·µ»ØÒ»¸ö·ÇÁãÖµ
-			{
-				//°´¼ü1´ú±íÇ°½ø£¬°´¼ü2´ú±íÍ£Ö¹
-				std::cin >> c;
-				if (c != 0)
-				{
-					if (c == 1)
-					{
-						recvBuf[0] = 0xff;
-						recvBuf[1] = 0x00;
-						recvBuf[2] = 0x01;
-						recvBuf[3] = 0x00;
-						recvBuf[4] = 0xff;
-						send(AcceptSocket, recvBuf, 5, 0);
-					}
-					else if (c == 2)
-					{
-						recvBuf[0] = 0xff;
-						recvBuf[1] = 0x00;
-						recvBuf[2] = 0x00;
-						recvBuf[3] = 0x00;
-						recvBuf[4] = 0xff;
-						send(AcceptSocket, recvBuf, 5, 0);
-					}
-					c == 0;//Çå¿Õ°´¼ü×´Ì¬ĞÅÏ¢£¬±ÜÃâÎóÅĞ¶Ï
-				}
-			}
-			char buf[51] = { 0 };
-			memset(buf, 0, 51);//Ã¿Ñ­»·Ò»´Î¾ÍÇå¿Õ½ÓÊÕÊı¾İ
-			count = recv(AcceptSocket, buf, 50, 0);
-			if (SOCKET_ERROR == count)
-			{
-				int err = WSAGetLastError();
-				if (WSAEWOULDBLOCK == err)
-				{
-					continue;
-				}
-				else if (WSAETIMEDOUT == err || WSAENETDOWN == err)
-				{
-					break;
-				}
-			}
-			else if (0 == count)
-			{
-				break;
-			}
-			memset(sendflag, 1, 6);//³õÊ¼»¯sendflagÊı×é£¬Ã¿Ò»Î»·Ö±ğ´ú±íÒ»¸ö¿Í»§¶ËµÄ·¢ËÍ×´Ì¬£¬Ã»ÓĞ·¢ËÍÎª1
-			memcpy(recvBuf, buf,sizeof buf);
-			//½«Ğ¡³µ×´Ì¬Êä³öµ½ÆÁÄ»
-			std::string output;
-			if (buf[2] == 0x00)
-			{
-				output = "stop";
-			}
-			else if (buf[2] == 0x01)
-			{
-				output = "forward";
-			}
-			else if (buf[2] == 0x02)
-			{
-				output = "back";
-			}
-			else if (buf[2] == 0x03)
-			{
-				output = "left";
-			}
-			else if (buf[2] == 0x04)
-			{
-				output = "right";
-			}
-			std::cout << "½ÓÊÕÀ´×Ô¿Í»§¶Ë" << AcceptSocket << "µÄĞÅÏ¢:" << output << std::endl;
-		}
-	}
-//½«1ºÅ¿Í»§¶ËµÄ·´À¡ĞÅÏ¢·¢ËÍ¸øÆäËû¿Í»§¶Ë
-	else
-	{
-		while (1)
-		{
-			if (sendflag[number])
-			{
-				send(AcceptSocket, recvBuf, count, 0);
-				sendflag[number] = 0;//·¢ËÍÊı¾İºó½«Êı×éÖĞµÄµÚnumberÎ»ÖÃ0£¬´ú±íÒÑ·¢ËÍ
-			}
-		}
-	}
-
-	//½áÊøÁ¬½Ó
+	//ç»“æŸè¿æ¥
 	closesocket(AcceptSocket);
 	return 0;
 }
 
+DWORD WINAPI carSlaveThreadProc(
+	__in  LPVOID lpParameter
+)
+{
+	unsigned long ul = 1;
+	int nRet;
+	SOCKET AcceptSocket = (SOCKET)lpParameter;
+	//è®¾ç½®å¥—æ¥å­—éé˜»å¡æ¨¡å¼
+	nRet = ioctlsocket(AcceptSocket, FIONBIO, (unsigned long*)&ul);
+	printf("slave car\n");
+	if (nRet == SOCKET_ERROR)
+	{
+		//è®¾ç½®å¥—æ¥å­—éé˜»å¡æ¨¡å¼ï¼Œå¤±è´¥å¤„ç†
+	}
+	//ç»“æŸè¿æ¥
+	closesocket(AcceptSocket);
+	return 0;
+}
+
+/**
+* æ¥å—å®¢æˆ·ç«¯è¿æ¥
+*/
+DWORD __stdcall acceptThread(void* pParam)
+{
+								                        //æ¥å—å®¢æˆ·ç«¯è¿æ¥çš„å¥—æ¥å­—
+	sockaddr_in addrClient;						                        //å®¢æˆ·ç«¯SOCKETåœ°å€
+	int	lenClient = sizeof(sockaddr_in);				        	//åœ°å€é•¿åº¦
+	int connectNum = 0;//è¿æ¥ä¸ªæ•°
+	while (bConning)						                                //æœåŠ¡å™¨çš„çŠ¶æ€
+	{			
+		SOCKET  acceptSocket = accept(listenSocket, (sockaddr*)&addrClient, &lenClient);	//æ¥å—å®¢æˆ·è¯·æ±‚
+		if (INVALID_SOCKET == acceptSocket)
+		{
+			int x = GetLastError();
+			Sleep(1);
+			continue;
+		}
+		else//æ¥å—å®¢æˆ·ç«¯çš„è¯·æ±‚
+		{
+			connectNum++;
+			if (connectNum == 1)
+			{
+				//å¯åŠ¨çº¿ç¨‹
+				DWORD dwThread;
+				HANDLE hThread = CreateThread(NULL, 0, carMasterThreadProc, (LPVOID)acceptSocket, 0, &dwThread);
+				if (hThread == NULL)
+				{
+					closesocket(acceptSocket);
+					wprintf(L"Thread Creat Failed!\n");
+					break;
+				}
+				CloseHandle(hThread);
+			}
+			else if (connectNum > 1)
+			{
+				//å¯åŠ¨çº¿ç¨‹
+				DWORD dwThread;
+				HANDLE hThread = CreateThread(NULL, 0, carSlaveThreadProc, (LPVOID)acceptSocket, 0, &dwThread);
+				if (hThread == NULL)
+				{
+					closesocket(acceptSocket);
+					wprintf(L"Thread Creat Failed!\n");
+					break;
+				}
+				CloseHandle(hThread);
+			}
+			connectNum++;
+		}
+	}
+	return 0;//çº¿ç¨‹é€€å‡º
+}
+
+/**
+*  é‡Šæ”¾èµ„æº
+*/
+void  exitServer(void)
+{
+	closesocket(listenSocket);					//å…³é—­SOCKET
+	listenSocket = INVALID_SOCKET;
+	WSACleanup();							//å¸è½½Windows Sockets DLL
+}
+
+/**
+* æ˜¾ç¤ºå¯åŠ¨æœåŠ¡å™¨æˆåŠŸä¸å¤±è´¥æ¶ˆæ¯
+*/
+void  showServerStartMsg(BOOL bSuc)
+{
+	if (bSuc)
+	{
+		cout << "**********************" << endl;
+		cout << "* Server succeeded!  *" << endl;
+		cout << "**********************" << endl;
+	}
+	else {
+		cout << "**********************" << endl;
+		cout << "* Server failed   !  *" << endl;
+		cout << "**********************" << endl;
+	}
+
+}
+
+/**
+* æ˜¾ç¤ºæœåŠ¡å™¨é€€å‡ºæ¶ˆæ¯
+*/
+void  showServerExitMsg(void)
+{
+
+	cout << "**********************" << endl;
+	cout << "* Server exit...     *" << endl;
+	cout << "**********************" << endl;
+}
+
 int main(int argc, char* argv[])
 {
-	//----------------------
-	// Ì×½Ó×Ö³õÊ¼»¯
-	WSADATA wsaData;
-	int iResult = WSAStartup(MAKEWORD(2, 2), &wsaData);
-	if (iResult != NO_ERROR) {
-		wprintf(L"WSAStartup failed with error: %ld\n", iResult);
-		return 1;
-	}
-	//----------------------
-	// ´´Ôì¼àÌıÌ×½Ó×Ö½ÓÊÕ¿Í»§¶Ë·ÃÎÊ
-	SOCKET ListenSocket;
-	ListenSocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-	if (ListenSocket == INVALID_SOCKET) {
-		wprintf(L"socket failed with error: %ld\n", WSAGetLastError());
-		WSACleanup();
-		return 1;
-	}
-	//----------------------
-	// ·şÎñÆ÷Ì×½Ó×ÖµØÖ·£¬Ğ­Òé¼°¶Ë¿ÚµÄ°ó¶¨
-	sockaddr_in addrServer;
-	addrServer.sin_family = AF_INET;
-	addrServer.sin_addr.s_addr = htonl(INADDR_ANY); //Êµ¼ÊÉÏÊÇ0
-	addrServer.sin_port = htons(8081);
-
-
-	//°ó¶¨Ì×½Ó×Öµ½Ò»¸öIPµØÖ·ºÍÒ»¸ö¶Ë¿ÚÉÏ
-	if (bind(ListenSocket, (SOCKADDR *)& addrServer, sizeof (addrServer)) == SOCKET_ERROR) {
-		wprintf(L"bind failed with error: %ld\n", WSAGetLastError());
-		closesocket(ListenSocket);
-		WSACleanup();
-
-		return 1;
-	}
-
-	//½«Ì×½Ó×ÖÉèÖÃÎª¼àÌıÄ£Ê½µÈ´ıÁ¬½ÓÇëÇó
-	if (listen(ListenSocket, 5) == SOCKET_ERROR) {
-		wprintf(L"listen failed with error: %ld\n", WSAGetLastError());
-		closesocket(ListenSocket);
-		WSACleanup();
-		return 1;
-	}
-
-	//½ÓÊÕ¿Í»§¶ËÇëÇó
-	SOCKADDR_IN addrClient;
-	int len = sizeof(SOCKADDR);
-	//ÒÔÒ»¸öÎŞÏŞÑ­»·µÄ·½Ê½£¬²»Í£µØ½ÓÊÕ¿Í»§¶ËsocketÁ¬½Ó
-	while (1)
+	//åˆå§‹åŒ–æœåŠ¡å™¨
+	if (!initSever())
 	{
-		//ÇëÇóµ½À´ºó£¬½ÓÊÜÁ¬½ÓÇëÇó£¬·µ»ØÒ»¸öĞÂµÄ¶ÔÓ¦ÓÚ´Ë´ÎÁ¬½ÓµÄÌ×½Ó×Ö
-		SOCKET AcceptSocket = accept(ListenSocket, (SOCKADDR*)&addrClient, &len);
-		if (AcceptSocket == INVALID_SOCKET)break; //³ö´í
-
-		//Æô¶¯Ïß³Ì
-		DWORD dwThread;
-		HANDLE hThread = CreateThread(NULL, 0, ThreadProc, (LPVOID)AcceptSocket, 0, &dwThread);
-		if (hThread == NULL)
-		{
-			closesocket(AcceptSocket);
-			wprintf(L"Thread Creat Failed!\n");
-			break;
-		}
-
-		CloseHandle(hThread);
+		exitServer();
+		return 1;
 	}
 
-	closesocket(ListenSocket);
-	WSACleanup();
+	//å¯åŠ¨æœåŠ¡
+	if (!startService())
+	{
+		showServerStartMsg(FALSE);
+		exitServer();
+		return 1;
+	}
+
+	//å¤„ç†æ•°æ®
+
+	//é€€å‡ºä¸»çº¿ç¨‹ï¼Œæ¸…ç†èµ„æº
+	exitServer();
+
 	return 0;
 }
