@@ -61,7 +61,8 @@ int xDistance;
 int yDistance;
 int xcopy;
 int ycopy;
-int test = 0;
+char stopSocketStr[5];
+int stopFlag;
 
 #define READY 1	//等待输入坐标
 #define PLAN 2	//计算路径
@@ -119,6 +120,8 @@ void initMember(void)
 	yDistance = -1;
 	xcopy = -1;
 	ycopy = -1;
+	memset(stopSocketStr, 0, 5);
+	stopFlag = 0;
 }
 
 //初始化SOCKET
@@ -224,6 +227,9 @@ DWORD WINAPI carMasterThreadProc(
 					if (c == 1)
 					{
 						timerFlag = 0;
+						stopSocketStr[1] = ORDER_STOP;
+						send(AcceptSocket, stopSocketStr, 5, 0);
+						stopFlag = 1;
 					}
 					c = 0;//清空按键状态信息，避免误判断
 				}
@@ -480,15 +486,12 @@ int main(int argc, char* argv[])
 void readyState()
 {
 			cout << "输入目的点坐标:" << endl;
-			int xcurrent = 4;
-			int ycurrent = 5;
-			test = 5;
 			cout << "输入x坐标" << endl;
-			cin >> xcurrent;
+			cin >> xDistance;
 			cout << "输入y坐标" << endl;
-			cin >> ycurrent;
-			xDistance = xcurrent * 1000;
-			yDistance = ycurrent * 1000;
+			cin >> yDistance;
+			xDistance = xDistance * 1000;
+			yDistance = yDistance * 1000;
 			xcopy = xDistance;
 			ycopy = yDistance;
 			carState = PLAN;
@@ -500,6 +503,11 @@ void planState()
 	{
 		printf("运动到指定位置\n");
 		carState = READY;
+	}
+	else if (stopFlag == 1)
+	{
+		carState = READY;
+		stopFlag = 0;
 	}
 	else
 	{
