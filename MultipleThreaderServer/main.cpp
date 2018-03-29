@@ -63,6 +63,7 @@ int xcopy;
 int ycopy;
 char stopSocketStr[5];
 int stopFlag;
+int turnningFlag;								//避障转弯标志位,为1时表示转弯完成执行直走命令
 
 #define READY 1	//等待输入坐标
 #define PLAN 2	//计算路径
@@ -73,12 +74,12 @@ int stopFlag;
 #define RIGHT 4	//车头朝右或小车右转
 #define STRAIGHT 1	//小车前进
 #define WAIT 2	//维持当前状态等待计时器计时结束
+#define STRAIGHT_1S 5	//小车避障转弯后直走
 #define ORDER_STRAIGHT 0x01
 #define ORDER_STOP 0x02
-
-
 #define ORDER_LEFT 0x03
 #define ORDER_RIGHT 0x04
+#define ORDER_OBSTACLE 0x05
 #define TURN_TIME 1000//转90度角所用时间
 #define SERVER_SETUP_FALL 1//启动服务器失败
  
@@ -116,6 +117,7 @@ void initMember(void)
 	memset(slaveSocketStr, 0, 5);
 	bufCount = 0;
 	obstacleFlag = 0;
+	turnningFlag = 0;
 	xDistance = -1;
 	yDistance = -1;
 	xcopy = -1;
@@ -245,17 +247,19 @@ DWORD WINAPI carMasterThreadProc(
 			{
 				break;
 			}
-		}
-		/*
-		if(遇到障碍)
+		}		
+		if(bufCount > 0)
 		{
-		timerFlag=0;
-		}
-		*/
-		if (bufCount > 0)
-		{
-			memset(slaveSocketFlag, 1, 6);//初始化sendflag数组，每一位分别代表一个客户端的发送状态，没有发送为1
-			memcpy(slaveSocketStr, buf, sizeof slaveSocketStr);
+			if (buf[1] == ORDER_OBSTACLE)
+			{
+				timerFlag = 0;
+				obstacleFlag = 1;
+			}
+			else
+			{ 
+				memset(slaveSocketFlag, 1, 6);//初始化sendflag数组，每一位分别代表一个客户端的发送状态，没有发送为1
+				memcpy(slaveSocketStr, buf, sizeof slaveSocketStr);
+			}
 		}
 		if (masterSocketFlag == 1)
 		{
@@ -492,112 +496,189 @@ void readyState()
 			cin >> yDistance;
 			xDistance = xDistance * 1000;
 			yDistance = yDistance * 1000;
-			xcopy = xDistance;
-			ycopy = yDistance;
 			carState = PLAN;
 }
 
 void planState()
 {
-	if (xDistance == 0 && yDistance == 0)
+	xcopy = xDistance;
+	ycopy = yDistance;
+	if (stopFlag == 1)
 	{
-		printf("运动到指定位置\n");
-		carState = READY;
-	}
-	else if (stopFlag == 1)
-	{
-		carState = READY;
 		stopFlag = 0;
+		carState = READY;	
 	}
 	else
 	{
-		switch (carDirection)
+		if (xDistance == 0 && yDistance == 0)
 		{
-		case UP:
-			if(yDistance<=0)
-			{
-				if (xDistance > 0)
-				{
-					carMoveState = RIGHT;
-					carDirection = RIGHT;
-				}
-				else
-				{
-					carMoveState = LEFT;
-					carDirection = LEFT;
-				}
-			}
-			else
-			{
-				carMoveState = STRAIGHT;
-				yDistance = 0;
-			}
-			break;
-		case DOWN:
-			if (yDistance >=0)
-			{
-				if (xDistance > 0)
-				{
-					carMoveState = LEFT;
-					carDirection = RIGHT;
-				}
-				else
-				{
-					carMoveState = RIGHT;
-					carDirection = LEFT;
-				}
-			}
-			else
-			{
-				carMoveState = STRAIGHT;
-				yDistance = 0;
-			}
-			break;
-		case LEFT:
-			if (xDistance < 0)
-			{
-				carMoveState = STRAIGHT;
-				xDistance = 0;
-			}
-			else
-			{
-				if (yDistance < 0)
-				{
-					carMoveState = LEFT;
-					carDirection = DOWN;
-				}
-				else
-				{
-					carMoveState = RIGHT;
-					carDirection = UP;
-				}
-			}
-			break;
-		case RIGHT:
-			if (xDistance > 0)
-			{
-				carMoveState = STRAIGHT;
-				xDistance = 0;
-			}
-			else
-			{
-				if (yDistance < 0)
-				{
-					carMoveState = RIGHT;
-					carDirection = DOWN;
-				}
-				else
-				{
-					carMoveState = LEFT;
-					carDirection = UP;
-				}
-			}
-			break;
-		default:
-			break;
+			printf("运动到指定位置\n");
+			carState = READY;
 		}
-		carState = MOVE;
-	}
+		else
+		{
+			if (obstacleFlag == 1)
+			{
+				if (turnningFlag == 0)
+				{
+					turnningFlag = 1;
+					switch (carDirection)
+					{
+					case UP:
+						if (xDistance < 0)
+						{
+							carMoveState = LEFT;
+							carDirection = LEFT;
+							xDistance = xDistance + 1000;
+						}
+						else
+						{
+							carMoveState = RIGHT;
+							carDirection = RIGHT;
+							xDistance = xDistance - 1000;
+						}
+						break;
+					case LEFT:
+						if (yDistance < 0)
+						{
+							carMoveState = LEFT;
+							carDirection = DOWN;
+							yDistance = yDistance + 1000;
+						}
+						else
+						{
+							carMoveState = RIGHT;
+							carDirection = UP;
+							yDistance = yDistance - 1000;
+						}
+						break;
+					case RIGHT:
+						if (yDistance > 0)
+						{
+							carMoveState = LEFT;
+							carDirection = UP;
+							yDistance = yDistance - 1000;
+						}
+						else
+						{
+							carMoveState = RIGHT;
+							carDirection = DOWN;
+							yDistance = yDistance + 1000;
+						}
+						break;
+					case DOWN:
+						if (xDistance > 0)
+						{
+							carMoveState = LEFT;
+							carDirection = RIGHT;
+							xDistance = xDistance - 1000;
+						}
+						else
+						{
+							carMoveState = RIGHT;
+							carDirection = LEFT;
+							xDistance = xDistance + 1000;
+						}
+						break;
+					}
+				}
+				else
+				{
+					carMoveState = STRAIGHT_1S;
+					obstacleFlag = 0;
+				}
+			}
+			else
+			{
+				switch (carDirection)
+				{
+				case UP:
+					if (yDistance <= 0)
+					{
+						if (xDistance > 0)
+						{
+							carMoveState = RIGHT;
+							carDirection = RIGHT;
+						}
+						else
+						{
+							carMoveState = LEFT;
+							carDirection = LEFT;
+						}
+					}
+					else
+					{
+						carMoveState = STRAIGHT;
+						yDistance = 0;
+					}
+					break;
+				case DOWN:
+					if (yDistance >= 0)
+					{
+						if (xDistance > 0)
+						{
+							carMoveState = LEFT;
+							carDirection = RIGHT;
+						}
+						else
+						{
+							carMoveState = RIGHT;
+							carDirection = LEFT;
+						}
+					}
+					else
+					{
+						carMoveState = STRAIGHT;
+						yDistance = 0;
+					}
+					break;
+				case LEFT:
+					if (xDistance < 0)
+					{
+						carMoveState = STRAIGHT;
+						xDistance = 0;
+					}
+					else
+					{
+						if (yDistance < 0)
+						{
+							carMoveState = LEFT;
+							carDirection = DOWN;
+						}
+						else
+						{
+							carMoveState = RIGHT;
+							carDirection = UP;
+						}
+					}
+					break;
+				case RIGHT:
+					if (xDistance > 0)
+					{
+						carMoveState = STRAIGHT;
+						xDistance = 0;
+					}
+					else
+					{
+						if (yDistance < 0)
+						{
+							carMoveState = RIGHT;
+							carDirection = DOWN;
+						}
+						else
+						{
+							carMoveState = LEFT;
+							carDirection = UP;
+						}
+					}
+					break;
+				default:
+					break;
+				}
+			}		
+			carState = MOVE;
+		}
+	}	
 }
 
 void moveState()
@@ -632,6 +713,13 @@ void moveState()
 		timerFlag = 1;
 		carMoveState = WAIT;
 		break;
+	case STRAIGHT_1S:
+		masterSocketStr[1] = ORDER_STRAIGHT;
+		masterSocketFlag = 1;
+		timeCount = 1000;
+		turnningFlag = 0;
+		timerFlag = 1;
+		carMoveState = WAIT;
 	case WAIT:
 		if (timerFlag == 0)
 		{
@@ -651,8 +739,10 @@ void moveState()
 					break;
 				case LEFT:
 					xDistance = -timeCount;
+					break;
 				case RIGHT:
 					xDistance = timeCount;
+					break;
 				default:
 					break;
 				}
