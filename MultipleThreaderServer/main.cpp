@@ -61,7 +61,6 @@ int xDistance;
 int yDistance;
 int xcopy;
 int ycopy;
-char stopSocketStr[5];
 int stopFlag;
 int turnningFlag;								//避障转弯标志位,为1时表示转弯完成执行直走命令
 
@@ -122,7 +121,6 @@ void initMember(void)
 	yDistance = -1;
 	xcopy = -1;
 	ycopy = -1;
-	memset(stopSocketStr, 0, 5);
 	stopFlag = 0;
 }
 
@@ -222,15 +220,13 @@ DWORD WINAPI carMasterThreadProc(
 		{
 			if (_kbhit())//检测键盘有无按键，有按键_kbhit()返回一个非零值
 			{
-				//按键1代表前进，按键2代表停止
+				//按键1代表停止
 				std::cin >> c;
 				if (c != 0)
 				{
 					if (c == 1)
 					{
 						timerFlag = 0;
-						stopSocketStr[1] = ORDER_STOP;
-						send(AcceptSocket, stopSocketStr, 5, 0);
 						stopFlag = 1;
 					}
 					c = 0;//清空按键状态信息，避免误判断
@@ -419,6 +415,7 @@ __in LPVOID lpParameter
 		{
 			if (timerFlag != timerFlaglast)
 			{
+				cout << "结束计时";
 				endTime = clock();
 				timeCount = timeCount - (endTime - startTime);
 			}
@@ -468,6 +465,8 @@ int main(int argc, char* argv[])
 				{
 				case READY:		
 					readyState();
+		
+					
 					break;
 				case PLAN:
 					planState();
@@ -732,16 +731,16 @@ void moveState()
 				switch (carDirection)
 				{
 				case UP:
-					yDistance = timeCount;
+					yDistance = yDistance + timeCount;
 					break;
 				case DOWN:
-					yDistance = -timeCount;
+					yDistance = yDistance - timeCount;
 					break;
 				case LEFT:
-					xDistance = -timeCount;
+					xDistance = xDistance - timeCount;
 					break;
 				case RIGHT:
-					xDistance = timeCount;
+					xDistance = xDistance + timeCount;
 					break;
 				default:
 					break;
